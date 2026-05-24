@@ -1,0 +1,12 @@
+{
+  "eur_to_cny": 8.0,
+  "weight_kg": 0.5,
+  "freight_per_kg": 100,
+  "dewu_pct": 0.06,
+  "dewu_fixed": 48,
+  "domestic_freight": 7,
+  "delay_search": 7.0,
+  "delay_detail": 5.0,
+  "delay_back": 2.0,
+  "delay_between": 1.5
+}

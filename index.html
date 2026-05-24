@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="套利工作台">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>套利工作台</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0a;--sf:#141414;--sf2:#1e1e1e;--bd:#2a2a2a;
+  --ac:#c8f135;--ac2:#a8d020;--gn:#4ade80;--rd:#f87171;--yw:#fbbf24;--bl:#60a5fa;
+  --tx:#f0f0f0;--t2:#888;--t3:#555;
+  --mo:'Space Mono',monospace;--sa:'Noto Sans SC',sans-serif;
+  --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);
+  --nav:56px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--tx);font-family:var(--sa);font-size:14px;min-height:100vh;padding-bottom:calc(var(--nav) + var(--sb));}
+
+/* Header */
+header{position:sticky;top:0;z-index:100;background:rgba(10,10,10,.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);padding:0 16px;padding-top:var(--st);display:flex;align-items:flex-end;justify-content:space-between;height:calc(52px + var(--st));padding-bottom:10px;}
+.logo{display:flex;align-items:center;gap:10px;}
+.hex{width:24px;height:24px;background:var(--ac);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);flex-shrink:0;}
+.logo-t{font-family:var(--mo);font-size:12px;font-weight:700;color:var(--ac);}
+.logo-s{font-family:var(--mo);font-size:9px;color:var(--t3);}
+.hdr-r{display:flex;align-items:center;gap:6px;}
+.rate-chip{font-family:var(--mo);font-size:11px;color:var(--ac);background:rgba(200,241,53,.1);border:1px solid rgba(200,241,53,.25);padding:4px 9px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:background .15s;}
+.rate-chip:active{background:rgba(200,241,53,.2);}
+.rate-chip.stale{color:var(--yw);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08);}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd);border-bottom:1px solid var(--bd);}
+.stat{background:var(--sf);padding:11px 14px;}
+.sl{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:3px;}
+.sv{font-family:var(--mo);font-size:19px;font-weight:700;line-height:1;}
+.sv.gn{color:var(--gn);}.sv.yw{color:var(--ac);}.sv.bl{color:var(--bl);}.sv.rd{color:var(--rd);}.sv.t2{color:var(--t2);}
+.sn{font-size:9px;color:var(--t3);margin-top:2px;font-family:var(--mo);}
+
+/* Desktop tab bar */
+.dtabs{display:none;}
+
+/* Bottom nav */
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(10,10,10,.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--bd);display:flex;padding-bottom:var(--sb);height:calc(var(--nav) + var(--sb));}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:transparent;color:var(--t3);cursor:pointer;font-family:var(--sa);font-size:10px;font-weight:500;padding-top:6px;}
+.nb.on{color:var(--ac);}
+.ni{font-size:22px;line-height:1;}
+
+/* Tabs */
+.tab{display:none;}.tab.on{display:block;}
+.main{padding:14px 14px;max-width:1200px;margin:0 auto;}
+
+/* Filter bar */
+.fbar{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+.sw{position:relative;flex:1;min-width:160px;}
+.sw input{width:100%;background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:9px 10px 9px 32px;color:var(--tx);font-family:var(--sa);font-size:13px;outline:none;}
+.sw input:focus{border-color:var(--ac);}
+.sw input::placeholder{color:var(--t3);}
+.si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:13px;}
+.chip{padding:7px 12px;border-radius:20px;border:1px solid var(--bd);background:transparent;color:var(--t2);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;}
+.chip.on{border-color:var(--ac);color:var(--ac);background:rgba(200,241,53,.08);}
+select.ss{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:8px 8px;color:var(--t2);font-family:var(--sa);font-size:12px;outline:none;cursor:pointer;}
+
+/* Cards (mobile product list) */
+.cards{display:flex;flex-direction:column;gap:8px;}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;gap:10px;cursor:pointer;}
+.card:active{background:var(--sf2);}
+.cimg{width:60px;height:60px;border-radius:7px;object-fit:cover;background:var(--sf2);border:1px solid var(--bd);flex-shrink:0;}
+.cph{width:60px;height:60px;border-radius:7px;background:var(--sf2);border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--t3);flex-shrink:0;}
+.cbody{flex:1;min-width:0;}
+.cname{font-weight:600;font-size:13px;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.csku{font-family:var(--mo);font-size:10px;color:var(--t3);margin-bottom:6px;}
+.crow{display:flex;justify-content:space-between;align-items:center;}
+.cbuy{font-family:var(--mo);font-size:12px;color:var(--t2);}
+.csell{font-family:var(--mo);font-size:13px;color:var(--bl);font-weight:700;}
+.cprofit{font-family:var(--mo);font-size:16px;font-weight:700;}
+.cprofit.pos{color:var(--gn);}.cprofit.neg{color:var(--rd);}
+.cmeta{display:flex;align-items:center;gap:5px;margin-top:5px;}
+.tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;}
+.tg{background:rgba(74,222,128,.12);color:var(--gn);border:1px solid rgba(74,222,128,.25);}
+.tr{background:rgba(248,113,113,.1);color:var(--rd);border:1px solid rgba(248,113,113,.2);}
+.ty{background:rgba(251,191,36,.12);color:var(--yw);border:1px solid rgba(251,191,36,.25);}
+.disc{font-family:var(--mo);font-size:10px;color:var(--yw);font-weight:700;}
+.rw{display:flex;align-items:center;gap:4px;}
+.rb{width:36px;height:3px;background:var(--bd);border-radius:2px;overflow:hidden;}
+.rf{height:100%;border-radius:2px;}
+.rp{font-family:var(--mo);font-size:10px;}
+.rp.gn{color:var(--gn);}.rp.rd{color:var(--rd);}
+
+/* Desktop table */
+.tw{background:var(--sf);border:1px solid var(--bd);border-radius:10px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead{background:var(--sf2);border-bottom:1px solid var(--bd);}
+th{padding:10px 12px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);text-align:left;white-space:nowrap;cursor:pointer;user-select:none;}
+th:hover{color:var(--t2);}
+tbody tr{border-bottom:1px solid var(--bd);transition:background .1s;cursor:pointer;}
+tbody tr:hover{background:var(--sf2);}
+tbody tr:last-child{border-bottom:none;}
+td{padding:10px 12px;vertical-align:middle;}
+.pimg{width:44px;height:44px;border-radius:5px;object-fit:cover;background:var(--sf2);border:1px solid var(--bd);display:block;}
+.piph{width:44px;height:44px;border-radius:5px;background:var(--sf2);border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--t3);}
+.pn{font-weight:600;font-size:13px;line-height:1.35;}
+.pm{font-size:11px;color:var(--t3);font-family:var(--mo);margin-top:1px;}
+.skub{font-family:var(--mo);font-size:11px;color:var(--t3);background:var(--sf2);border:1px solid var(--bd);padding:2px 6px;border-radius:4px;}
+.pe{font-family:var(--mo);font-size:13px;}
+.pec{font-family:var(--mo);font-size:10px;color:var(--t3);margin-top:1px;}
+.pd{font-family:var(--mo);font-size:14px;font-weight:700;color:var(--gn);}
+.pp{font-family:var(--mo);font-weight:700;font-size:14px;color:var(--gn);}
+.pneg{font-family:var(--mo);font-weight:700;font-size:14px;color:var(--rd);}
+.el{font-size:11px;color:var(--t3);text-decoration:none;border:1px solid var(--bd);padding:3px 7px;border-radius:4px;transition:all .15s;white-space:nowrap;}
+.el:hover{border-color:var(--ac);color:var(--ac);}
+
+/* Empty */
+.empty{text-align:center;padding:60px 16px;}
+.ei{font-size:40px;opacity:.2;margin-bottom:10px;}
+.et{font-size:13px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+.ed{font-size:12px;color:var(--t3);line-height:2.2;}
+.ed code{background:var(--sf2);padding:2px 6px;border-radius:4px;font-family:var(--mo);font-size:11px;color:var(--ac);}
+
+/* Detail modal */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:300;display:none;align-items:flex-end;justify-content:center;}
+.ov.open{display:flex;}
+.mo{background:var(--sf);border:1px solid var(--bd);border-top:1px solid #333;border-radius:18px 18px 0 0;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;padding-bottom:calc(16px + var(--sb));}
+.drag{width:40px;height:4px;background:var(--bd);border-radius:2px;margin:12px auto 0;}
+.mh{padding:14px 20px 14px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;position:sticky;top:0;background:var(--sf);z-index:1;}
+.mt{font-size:14px;font-weight:700;line-height:1.4;}
+.ms{font-family:var(--mo);font-size:10px;color:var(--t3);margin-top:2px;}
+.mx{width:28px;height:28px;border-radius:6px;border:1px solid var(--bd);background:none;color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.mb{padding:14px 20px;}
+.mi{width:100%;max-height:200px;object-fit:contain;border-radius:8px;background:var(--sf2);border:1px solid var(--bd);margin-bottom:14px;}
+.pr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:12px;}
+.pi{display:flex;align-items:center;gap:5px;}
+.pi label{font-size:10px;color:var(--t3);white-space:nowrap;}
+.pi input{width:56px;background:var(--bg);border:1px solid var(--bd);border-radius:5px;padding:4px 6px;color:var(--tx);font-family:var(--mo);font-size:12px;outline:none;}
+.pi input:focus{border-color:var(--ac);}
+.pc{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;}
+.pcc{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;}
+.pcl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);margin-bottom:4px;}
+.pcv{font-family:var(--mo);font-size:18px;font-weight:700;line-height:1;}
+.pcv.gn{color:var(--gn);}.pcv.yw{color:var(--ac);}.pcv.rd{color:var(--rd);}.pcv.bl{color:var(--bl);}
+.pcs{font-size:10px;color:var(--t3);margin-top:2px;}
+.stt{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);margin-bottom:6px;}
+.stbl{width:100%;border-collapse:collapse;font-size:12px;border-radius:8px;overflow:hidden;border:1px solid var(--bd);}
+.stbl th{background:var(--sf2);padding:7px 8px;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3);text-align:left;border-bottom:1px solid var(--bd);}
+.stbl td{padding:8px;border-bottom:1px solid var(--bd);}
+.stbl tr:last-child td{border-bottom:none;}
+.si2{color:var(--gn);font-weight:700;font-family:var(--mo);}
+.sno{color:var(--t3);font-family:var(--mo);}
+.spg{color:var(--gn);font-family:var(--mo);font-size:11px;}
+.spn{color:var(--rd);font-family:var(--mo);font-size:11px;}
+.ma{display:flex;gap:8px;margin-top:14px;}
+.ma a{flex:1;text-align:center;text-decoration:none;padding:11px 8px;border-radius:8px;border:1px solid var(--bd);color:var(--t2);font-size:13px;font-family:var(--sa);}
+.ma a.primary{background:var(--ac);color:#0a0a0a;border-color:var(--ac);font-weight:700;}
+
+/* Ledger */
+.lbar{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;}
+.lstat{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:13px 14px;}
+.ll{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:3px;}
+.lv{font-family:var(--mo);font-size:22px;font-weight:700;line-height:1;}
+.lv.gn{color:var(--gn);}.lv.yw{color:var(--ac);}.lv.bl{color:var(--bl);}.lv.rd{color:var(--rd);}.lv.t2{color:var(--t2);}
+.ln{font-size:10px;color:var(--t3);margin-top:2px;}
+.add-btn{width:100%;padding:13px;background:var(--ac);color:#0a0a0a;border:none;border-radius:10px;font-family:var(--sa);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px;}
+.add-btn:active{background:var(--ac2);}
+.litems{display:flex;flex-direction:column;gap:8px;}
+.litem{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px;position:relative;}
+.litem.sold{border-color:rgba(74,222,128,.25);}
+.litop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.liname{font-weight:600;font-size:13px;margin-bottom:2px;}
+.liskudate{font-family:var(--mo);font-size:10px;color:var(--t3);}
+.liprofit{font-family:var(--mo);font-size:16px;font-weight:700;text-align:right;}
+.liprofit.gn{color:var(--gn);}.liprofit.rd{color:var(--rd);}.liprofit.t2{color:var(--t2);}
+.listatus{font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;display:inline-block;margin-top:3px;}
+.listatus.h{background:rgba(96,165,250,.1);color:var(--bl);border:1px solid rgba(96,165,250,.2);}
+.listatus.s{background:rgba(74,222,128,.1);color:var(--gn);border:1px solid rgba(74,222,128,.2);}
+.lirow{display:flex;gap:14px;flex-wrap:wrap;}
+.licell .ll2{font-size:9px;color:var(--t3);margin-bottom:1px;}
+.licell .lval{font-family:var(--mo);font-size:12px;color:var(--t2);}
+.lidel{position:absolute;top:10px;right:10px;border:none;background:transparent;color:var(--t3);font-size:18px;cursor:pointer;padding:2px 6px;line-height:1;}
+.lidel:active{color:var(--rd);}
+
+/* Add sheet */
+.sov{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:400;display:none;align-items:flex-end;justify-content:center;}
+.sov.open{display:flex;}
+.sheet{background:var(--sf);border:1px solid var(--bd);border-radius:18px 18px 0 0;width:100%;max-width:600px;max-height:93vh;overflow-y:auto;padding-bottom:calc(20px + var(--sb));}
+.sh{padding:14px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--sf);z-index:1;}
+.sh-t{font-size:15px;font-weight:700;}
+.sb{padding:16px 20px;}
+.frow{margin-bottom:12px;}
+.flabel{font-size:11px;color:var(--t3);margin-bottom:5px;display:block;}
+.finput{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:11px 12px;color:var(--tx);font-family:var(--sa);font-size:14px;outline:none;}
+.finput:focus{border-color:var(--ac);}
+.frow2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+.fselect{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:11px 12px;color:var(--tx);font-family:var(--sa);font-size:14px;outline:none;cursor:pointer;}
+.save-btn{width:100%;padding:14px;background:var(--ac);color:#0a0a0a;border:none;border-radius:10px;font-family:var(--sa);font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;}
+.save-btn:active{background:var(--ac2);}
+
+/* Loading */
+.ld{display:none;position:fixed;inset:0;background:rgba(10,10,10,.9);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+.ld.show{display:flex;}
+.sp{width:32px;height:32px;border:2px solid var(--bd);border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.lt{font-family:var(--mo);font-size:11px;color:var(--t2);}
+
+/* Refresh pulse */
+.dot{width:5px;height:5px;border-radius:50%;background:var(--gn);display:inline-block;margin-right:3px;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* Desktop */
+@media(min-width:768px){
+  body{padding-bottom:0;}
+  .bnav{display:none;}
+  .dtabs{display:flex;background:var(--sf);border-bottom:1px solid var(--bd);padding:0 24px;}
+  .dtab{padding:12px 20px;border:none;background:transparent;color:var(--t2);font-family:var(--sa);font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;}
+  .dtab.on{color:var(--ac);border-bottom-color:var(--ac);}
+  .stats{grid-template-columns:repeat(6,1fr);}
+  .main{padding:20px 24px;}
+  .cards{display:none;}
+  .tw{display:block;}
+  .ov,.sov{align-items:center;}
+  .mo,.sheet{border-radius:14px;max-height:85vh;}
+  .lbar{grid-template-columns:repeat(4,1fr);}
+}
+@media(max-width:767px){
+  .dtabs{display:none;}
+  .tw{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="ld" id="ld"><div class="sp"></div><div class="lt">加载数据中...</div></div>
+
+<header>
+  <div class="logo">
+    <div class="hex"></div>
+    <div><div class="logo-t">套利工作台</div><div class="logo-s">Arc'teryx × 门道</div></div>
+  </div>
+  <div class="hdr-r">
+    <span class="rate-chip" id="rate-chip" onclick="fetchRate(true)" title="点击刷新汇率">EUR —</span>
+  </div>
+</header>
+
+<div class="dtabs">
+  <button class="dtab on" onclick="switchTab('compare',this)">📊 比价</button>
+  <button class="dtab" onclick="switchTab('ledger',this)">📒 记账</button>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="sl">商品总数</div><div class="sv yw" id="s0">—</div><div class="sn">奥莱来源</div></div>
+  <div class="stat"><div class="sl">已匹配</div><div class="sv bl" id="s1">—</div><div class="sn">有门道价格</div></div>
+  <div class="stat"><div class="sv gn" style="font-size:13px;margin-bottom:1px" id="s3">—</div><div class="sl" style="margin-bottom:0">最高利润</div></div>
+  <div class="stat"><div class="sl">可盈利</div><div class="sv gn" id="s2">—</div><div class="sn">利润 &gt; 0</div></div>
+  <div class="stat"><div class="sl">平均利润</div><div class="sv yw" id="s4">—</div><div class="sn">盈利均值</div></div>
+  <div class="stat"><div class="sl">数据更新</div><div class="sv t2" id="s5" style="font-size:12px;margin-top:2px">—</div><div class="sn"><span class="dot"></span>60s自动刷新</div></div>
+</div>
+
+<!-- 比价 Tab -->
+<div class="tab on" id="tab-compare">
+<div class="main">
+  <div class="fbar">
+    <div class="sw"><span class="si">🔍</span><input type="text" id="q" placeholder="搜索货号或商品名..." oninput="render()"></div>
+    <button class="chip on" onclick="setF('all',this)">全部</button>
+    <button class="chip" onclick="setF('profit',this)">盈利</button>
+    <button class="chip" onclick="setF('men',this)">男</button>
+    <button class="chip" onclick="setF('women',this)">女</button>
+    <button class="chip" onclick="setF('jackets',this)">冲锋衣</button>
+    <button class="chip" onclick="setF('fleece',this)">抓绒</button>
+    <select class="ss" id="srt" onchange="render()">
+      <option value="p_d">利润↓</option>
+      <option value="p_a">利润↑</option>
+      <option value="r_d">利润率↓</option>
+      <option value="e_a">欧元价↑</option>
+      <option value="d_d">门道价↓</option>
+      <option value="dc_d">折扣↓</option>
+    </select>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th style="width:48px"></th><th>商品</th><th>货号</th><th>奥莱价</th><th>门道价</th><th>利润</th><th>利润率</th><th>7日销量</th><th>折扣</th><th></th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="empty" id="emp" style="display:none">
+      <div class="ei">📦</div><div class="et">暂无数据</div>
+      <div class="ed">运行 <code>python auto_click_mendao.py</code> 抓取门道价格<br>运行 <code>python rebuild_results.py</code> 生成数据<br>数据就绪后页面自动刷新</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 记账 Tab -->
+<div class="tab" id="tab-ledger">
+<div class="main">
+  <div class="lbar">
+    <div class="lstat"><div class="ll">总投入</div><div class="lv bl" id="l0">¥0</div><div class="ln">已采购成本</div></div>
+    <div class="lstat"><div class="ll">已实现利润</div><div class="lv gn" id="l2">¥0</div><div class="ln">ROI <span id="l2r">0%</span></div></div>
+    <div class="lstat"><div class="ll">总收入</div><div class="lv yw" id="l1">¥0</div><div class="ln">实际售出金额</div></div>
+    <div class="lstat"><div class="ll">持有中</div><div class="lv t2" id="l3">0件</div><div class="ln">未售出商品</div></div>
+  </div>
+  <button class="add-btn" onclick="openSheet()">＋ 新增采购记录</button>
+  <div class="litems" id="litems"></div>
+</div>
+</div>
+
+<!-- 底部导航 -->
+<nav class="bnav">
+  <button class="nb on" id="nb-compare" onclick="switchTab('compare',null,'compare')">
+    <span class="ni">📊</span><span>比价</span>
+  </button>
+  <button class="nb" id="nb-ledger" onclick="switchTab('ledger',null,'ledger')">
+    <span class="ni">📒</span><span>记账</span>
+  </button>
+</nav>
+
+<!-- 商品详情弹窗 -->
+<div class="ov" id="ov" onclick="if(event.target===this)closeModal()">
+  <div class="mo">
+    <div class="drag"></div>
+    <div class="mh">
+      <div><div class="mt" id="m0">—</div><div class="ms" id="m1">—</div></div>
+      <button class="mx" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mb">
+      <img class="mi" id="mimg" src="" alt="" style="display:none">
+      <div class="pr">
+        <div class="pi"><label>汇率</label><input id="pr1" type="number" value="8" step="0.1" oninput="recalc()"></div>
+        <div class="pi"><label>重量kg</label><input id="pr2" type="number" value="0.5" step="0.1" oninput="recalc()"></div>
+        <div class="pi"><label>运费/kg</label><input id="pr3" type="number" value="100" step="10" oninput="recalc()"></div>
+        <div class="pi"><label>手续¥</label><input id="pr4" type="number" value="48" step="1" oninput="recalc()"></div>
+        <div class="pi"><label>得物%</label><input id="pr5" type="number" value="6" step="0.5" oninput="recalc()"></div>
+      </div>
+      <div class="pc">
+        <div class="pcc"><div class="pcl">综合成本</div><div class="pcv yw" id="mc1">—</div><div class="pcs">欧元×汇率+运费</div></div>
+        <div class="pcc"><div class="pcl">门道到手</div><div class="pcv bl" id="mc2">—</div><div class="pcs">扣除手续费后</div></div>
+        <div class="pcc"><div class="pcl">预计利润</div><div class="pcv" id="mc3">—</div><div class="pcs" id="mc4">—</div></div>
+      </div>
+      <div class="stt">各颜色 × 尺码 详细价格</div>
+      <table class="stbl">
+        <thead><tr><th>颜色</th><th>尺码</th><th>门道价</th><th>利润</th><th>7日销量</th><th>库存</th></tr></thead>
+        <tbody id="msz"></tbody>
+      </table>
+      <div class="ma">
+        <a href="#" id="mal" target="_blank">🛍 奥莱</a>
+        <a href="#" id="mdl" target="_blank" class="primary">🐂 门道</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增记录 Sheet -->
+<div class="sov" id="sov" onclick="if(event.target===this)closeSheet()">
+  <div class="sheet">
+    <div class="drag"></div>
+    <div class="sh"><div class="sh-t" id="sh-title">新增采购记录</div><button class="mx" onclick="closeSheet()">✕</button></div>
+    <div class="sb">
+      <div class="frow"><label class="flabel">货号 SKU</label><input class="finput" id="f-sku" placeholder="如 X000009978" oninput="autoFill()"></div>
+      <div class="frow"><label class="flabel">商品名称</label><input class="finput" id="f-name" placeholder="如 Belfry Wool Pant Women"></div>
+      <div class="frow2">
+        <div><label class="flabel">采购价</label><input class="finput" id="f-buy" type="number" placeholder="如 350"></div>
+        <div><label class="flabel">币种</label><select class="fselect" id="f-cur"><option value="EUR">EUR 欧元</option><option value="CNY">CNY 人民币</option></select></div>
+      </div>
+      <div class="frow2">
+        <div><label class="flabel">实售价 ¥（留空=持有中）</label><input class="finput" id="f-sell" type="number" placeholder="留空表示持有中"></div>
+        <div><label class="flabel">状态</label><select class="fselect" id="f-status"><option value="holding">持有中</option><option value="sold">已售出</option></select></div>
+      </div>
+      <div class="frow"><label class="flabel">平台</label><input class="finput" id="f-plat" value="得物" placeholder="得物 / 闲鱼 / 微信"></div>
+      <div class="frow"><label class="flabel">备注（尺码、颜色等）</label><input class="finput" id="f-note" placeholder="可选"></div>
+      <button class="save-btn" onclick="saveRecord()">保存记录</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let D=[], CUR=null, F='all', currentRate=8.0, lastTS='', editId=null;
+
+// ── 调试 ──────────────────────────────────────────────────────
+const dlog=document.getElementById('dlog');
+function dbg(msg){ if(dlog) dlog.textContent+='['+new Date().toLocaleTimeString()+'] '+msg+'\n'; else console.log(msg); }
+dbg('页面加载');
+
+// ── 汇率 ──────────────────────────────────────────────────────
+async function fetchRate(force){
+  const K='eur_cny', T='eur_cny_ts', TTL=3600000;
+  if(!force){
+    const v=localStorage.getItem(K), t=+localStorage.getItem(T)||0;
+    if(v && Date.now()-t<TTL){ applyRate(parseFloat(v),false); return; }
+  }
+  const chip=document.getElementById('rate-chip');
+  chip.textContent='EUR ...';
+  try{
+    const r=await fetch('https://api.frankfurter.app/latest?from=EUR&to=CNY');
+    const j=await r.json();
+    const rate=j.rates&&j.rates.CNY;
+    if(rate){ localStorage.setItem(K,rate); localStorage.setItem(T,Date.now()); applyRate(rate,true); }
+    else applyRate(currentRate,false);
+  }catch(){ applyRate(currentRate,false); }
+}
+function applyRate(rate,fresh){
+  currentRate=rate;
+  const chip=document.getElementById('rate-chip');
+  chip.textContent='EUR '+rate.toFixed(2);
+  chip.className='rate-chip'+(fresh?'':' stale');
+  chip.title=fresh?'实时汇率（点击刷新）':'缓存汇率（点击刷新）';
+  document.getElementById('pr1').value=rate.toFixed(2);
+  if(D.length) render();
+}
+
+// ── Tab ──────────────────────────────────────────────────────
+function switchTab(tab, dtEl, nbId){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('tab-'+tab).classList.add('on');
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('on'));
+  if(dtEl) dtEl.classList.add('on');
+  else{ const i=tab==='compare'?0:1; (document.querySelectorAll('.dtab')[i]||{}).classList&&document.querySelectorAll('.dtab')[i].classList.add('on'); }
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  const nb=document.getElementById('nb-'+(nbId||tab));
+  if(nb) nb.classList.add('on');
+  if(tab==='ledger') renderLedger();
+}
+
+// ── 利润计算 ──────────────────────────────────────────────────
+function cp(o){
+  const rate=+(o&&o.rate!=null?o.rate:document.getElementById('pr1').value||currentRate);
+  const wt=+(o&&o.wt!=null?o.wt:document.getElementById('pr2').value||0.5);
+  const fr=+(o&&o.fr!=null?o.fr:document.getElementById('pr3').value||100);
+  const fx=+(o&&o.fx!=null?o.fx:document.getElementById('pr4').value||48);
+  const pc=+(o&&o.pc!=null?o.pc:document.getElementById('pr5').value||6)/100;
+  return(eur,dw)=>{
+    const cost=eur*rate+wt*fr;
+    const net=dw*(1-pc)-fx-7;
+    const profit=net-cost;
+    return{cost:Math.round(cost),net:Math.round(net),profit:Math.round(profit),rate:Math.round(profit/cost*1000)/10};
+  };
+}
+
+// ── 加载数据 ──────────────────────────────────────────────────
+async function load(silent){
+  if(!silent) document.getElementById('ld').classList.add('show');
+  try{
+    const r=await fetch('results.json?t='+Date.now());
+    if(!r.ok) throw 0;
+    const j=await r.json();
+    if(silent && j.timestamp===lastTS){ document.getElementById('ld').classList.remove('show'); return; }
+    lastTS=j.timestamp||'';
+    D=(j.results||[]).filter(r=>r&&(r.dewu_min_price>0||r.dewu_price>0)).map(r=>({
+      ...r, dp:r.dewu_min_price||r.dewu_price||0, bd:r.buy_display||'', ep:r.eur_price||0, total_sold:r.total_sold||0,
+    }));
+    const ts=(j.timestamp||'').replace(/^\d{4}-\d{2}-\d{2} /,'');
+    document.getElementById('s5').textContent=ts;
+    statsBar(j);
+    render();
+  }catch(e){ D=[]; render(); }
+  document.getElementById('ld').classList.remove('show');
+}
+
+function statsBar(j){
+  const calc=cp({rate:currentRate});
+  const m=D.filter(r=>r.dp>0);
+  const pr=m.filter(r=>calc(r.ep,r.dp).profit>0);
+  document.getElementById('s0').textContent=j.total||'—';
+  document.getElementById('s1').textContent=m.length||'—';
+  document.getElementById('s2').textContent=pr.length||'0';
+  if(pr.length){
+    const best=pr.map(r=>({r,p:calc(r.ep,r.dp)})).sort((a,b)=>b.p.profit-a.p.profit)[0];
+    document.getElementById('s3').textContent='¥'+best.p.profit+' ('+best.r.name.slice(0,14)+')';
+    document.getElementById('s4').textContent='¥'+Math.round(pr.reduce((s,r)=>s+calc(r.ep,r.dp).profit,0)/pr.length);
+  }
+}
+
+// ── 渲染 ──────────────────────────────────────────────────────
+function filtered(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const srt=document.getElementById('srt').value;
+  const calc=cp({rate:currentRate});
+  let rows=D.filter(r=>{
+    if(q&&![(r.sku||''),(r.name||''),(r.dewu_title||'')].some(s=>s.toLowerCase().includes(q))) return false;
+    if(F==='profit'&&calc(r.ep,r.dp).profit<=0) return false;
+    if(F==='men'&&r.gender!=='men') return false;
+    if(F==='women'&&r.gender!=='women') return false;
+    if(F==='jackets'&&!(r.category||'').includes('jackets')) return false;
+    if(F==='fleece'&&!(r.category||'').includes('fleece')) return false;
+    return true;
+  }).map(r=>({...r,_c:calc(r.ep,r.dp)}));
+  const sf={p_d:(a,b)=>b._c.profit-a._c.profit,p_a:(a,b)=>a._c.profit-b._c.profit,r_d:(a,b)=>b._c.rate-a._c.rate,e_a:(a,b)=>a.ep-b.ep,d_d:(a,b)=>b.dp-a.dp,dc_d:(a,b)=>(b.discount_pct||0)-(a.discount_pct||0)};
+  rows.sort(sf[srt]||sf.p_d);
+  return rows;
+}
+
+function catL(c){return(c||'').replace('mens','').replace('womens','').replace('coats','冲锋衣').replace('fleece','抓绒').replace('shirtstops','上装').replace('baselay','底层').replace('legwear','裤装').replace('softshells','软壳').replace('jackets','夹克');}
+
+function render(){
+  const rows=filtered();
+  const emp=document.getElementById('emp');
+  if(!rows.length){
+    document.getElementById('cards').innerHTML='';
+    document.getElementById('tb').innerHTML='';
+    emp.style.display='block'; return;
+  }
+  emp.style.display='none';
+  renderCards(rows);
+  renderTable(rows);
+}
+
+function tagHtml(p){ return p>500?'<span class="tag ty">高利润</span>':p>0?'<span class="tag tg">盈利</span>':'<span class="tag tr">亏损</span>'; }
+
+function renderCards(rows){
+  document.getElementById('cards').innerHTML=rows.map((r,i)=>{
+    const c=r._c, bw=Math.min(100,Math.abs(c.rate)*2), bc=c.profit>=0?'var(--gn)':'var(--rd)';
+    const img=r.image?`<img class="cimg" src="${r.image}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.display='flex'">`:'';
+    const ph=`<div class="cph"${r.image?' style="display:none"':''}>👕</div>`;
+    return`<div class="card" onclick="openM(${i})">${img}${ph}<div class="cbody">
+      <div class="cname">${(r.name||'').slice(0,38)}</div>
+      <div class="csku">${r.sku||'—'} · ${r.gender||''} ${catL(r.category)}</div>
+      <div class="crow">
+        <div><div class="cbuy">${r.bd||(r.ep>0?'€'+r.ep.toFixed(0):'—')}</div><div class="csell">¥${r.dp.toFixed(0)}</div></div>
+        <div style="text-align:right">
+          <div class="cprofit ${c.profit>=0?'pos':'neg'}">${c.profit>=0?'+':''}¥${c.profit}</div>
+          <div class="rw" style="justify-content:flex-end"><span class="rp ${c.rate>=0?'gn':'rd'}">${c.rate>=0?'+':''}${c.rate}%</span><div class="rb"><div class="rf" style="width:${bw}%;background:${bc}"></div></div></div>
+        </div>
+      </div>
+      <div class="cmeta">${tagHtml(c.profit)}<span class="disc">${r.discount_pct||0}% OFF</span></div>
+    </div></div>`;
+  }).join('');
+}
+
+function renderTable(rows){
+  document.getElementById('tb').innerHTML=rows.map((r,i)=>{
+    const c=r._c, bw=Math.min(100,Math.abs(c.rate)*2), bc=c.profit>=0?'var(--gn)':'var(--rd)';
+    const img=r.image?`<img class="pimg" src="${r.image}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.display='flex'">`:'';
+    const ph=`<div class="piph"${r.image?' style="display:none"':''}>👕</div>`;
+    return`<tr onclick="openM(${i})">
+      <td>${img}${ph}</td>
+      <td><div class="pn">${(r.name||'').slice(0,40)}</div><div class="pm">${r.gender||''} · ${catL(r.category)}</div>${tagHtml(c.profit)}</td>
+      <td><span class="skub">${r.sku||'—'}</span></td>
+      <td><div class="pe">${r.bd||(r.ep>0?'€'+r.ep.toFixed(0):'—')}</div><div class="pec">${r.ep>0&&!r.bd?'≈¥'+(r.ep*currentRate).toFixed(0):''}</div></td>
+      <td><div class="pd">¥${r.dp.toFixed(0)}</div></td>
+      <td><div class="${c.profit>=0?'pp':'pneg'}">¥${c.profit>=0?'+':''}${c.profit}</div></td>
+      <td><div class="rw"><span class="rp ${c.rate>=0?'gn':'rd'}">${c.rate>=0?'+':''}${c.rate}%</span><div class="rb"><div class="rf" style="width:${bw}%;background:${bc}"></div></div></div></td>
+      <td>${r.total_sold>0?`<span style="color:var(--ac);font-weight:700">${r.total_sold}</span>`:'<span style="color:var(--t3)">—</span>'}</td>
+      <td><span class="disc">${r.discount_pct||0}%</span></td>
+      <td><a href="${r.url||'#'}" target="_blank" class="el" onclick="event.stopPropagation()">奥莱→</a></td>
+    </tr>`;
+  }).join('');
+}
+
+function setF(f,el){F=f;document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');render();}
+
+// ── 详情弹窗 ──────────────────────────────────────────────────
+function openM(i){
+  const rows=filtered(); CUR=rows[i]; if(!CUR) return;
+  document.getElementById('m0').textContent=CUR.name||CUR.dewu_title||'—';
+  document.getElementById('m1').textContent=`货号: ${CUR.sku||'—'} · ${CUR.gender||''} ${catL(CUR.category)}`;
+  const img=document.getElementById('mimg');
+  if(CUR.image){img.src=CUR.image;img.style.display='block';}else img.style.display='none';
+  document.getElementById('mal').href=CUR.url||'#';
+  const spu=CUR.dewu_spuId||CUR.spuId||'';
+  document.getElementById('mdl').href=spu?`https://www.dewu.com/product/detail?productId=${spu}`:'#';
+  document.getElementById('pr1').value=currentRate.toFixed(2);
+  recalc();
+  document.getElementById('ov').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function recalc(){
+  if(!CUR) return;
+  const calc=cp();
+  let c=CUR.ep>0?calc(CUR.ep,CUR.dp):(()=>{const net=CUR.dp*(1-+document.getElementById('pr5').value/100)-+document.getElementById('pr4').value-7;const p=Math.round(net-(CUR.price||0));return{cost:Math.round(CUR.price||0),net:Math.round(net),profit:p,rate:Math.round(p/(CUR.price||1)*1000)/10};})();
+  document.getElementById('mc1').textContent='¥'+c.cost;
+  document.getElementById('mc2').textContent='¥'+c.net;
+  const pe=document.getElementById('mc3');
+  pe.textContent=(c.profit>=0?'+':'')+'¥'+c.profit; pe.className='pcv '+(c.profit>=0?'gn':'rd');
+  document.getElementById('mc4').textContent=(c.rate>=0?'+':'')+c.rate+'%';
+  const prices=CUR.prices||[];
+  document.getElementById('msz').innerHTML=prices.length?prices.map(p=>{
+    const pc=p.inStock?calc(CUR.ep,p.price):null;
+    return`<tr><td>${p.color||'—'}</td><td><strong>${p.size||'—'}</strong></td>
+      <td>${p.inStock?`<span class="si2">¥${p.price}</span>`:'<span class="sno">缺货</span>'}</td>
+      <td>${pc?`<span class="${pc.profit>=0?'spg':'spn'}">${pc.profit>=0?'+':''}¥${pc.profit}</span>`:'—'}</td>
+      <td>${p.saleCnt>0?`<span style="color:var(--ac);font-weight:700">${p.saleCnt}</span>`:'<span style="color:var(--t3)">—</span>'}</td>
+      <td>${p.inStock?'✓':'—'}</td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:16px">暂无尺码数据</td></tr>';
+}
+function closeModal(){document.getElementById('ov').classList.remove('open');document.body.style.overflow='';CUR=null;}
+
+// ── 记账 ──────────────────────────────────────────────────────
+const LS='ledger_v1';
+function getLedger(){try{return JSON.parse(localStorage.getItem(LS)||'[]');}catch{return[];}}
+function saveLedger(d){localStorage.setItem(LS,JSON.stringify(d));}
+
+function renderLedger(){
+  const recs=getLedger();
+  const sold=recs.filter(r=>r.status==='sold'), hold=recs.filter(r=>r.status!=='sold');
+  const toCny=r=>parseFloat(r.buyPrice||0)*(r.currency==='EUR'?currentRate:1);
+  const totalInvested=recs.reduce((s,r)=>s+toCny(r),0);
+  const soldCost=sold.reduce((s,r)=>s+toCny(r),0);
+  const totalSell=sold.reduce((s,r)=>s+parseFloat(r.sellPrice||0),0);
+  const profit=totalSell-soldCost;
+  const roi=soldCost>0?(profit/soldCost*100).toFixed(1):'0.0';
+  document.getElementById('l0').textContent='¥'+Math.round(totalInvested);
+  document.getElementById('l1').textContent='¥'+Math.round(totalSell);
+  document.getElementById('l2').textContent=(profit>=0?'+':'')+'¥'+Math.round(profit);
+  document.getElementById('l2').className='lv '+(profit>=0?'gn':'rd');
+  document.getElementById('l2r').textContent=roi+'%';
+  document.getElementById('l3').textContent=hold.length+'件';
+  const el=document.getElementById('litems');
+  if(!recs.length){el.innerHTML='<div class="empty"><div class="ei">📒</div><div class="et">暂无记录</div><div class="ed">点击上方按钮新增采购记录</div></div>';return;}
+  el.innerHTML=recs.slice().reverse().map(r=>{
+    const cost=toCny(r); const isSold=r.status==='sold';
+    const sell=parseFloat(r.sellPrice||0); const profit=isSold?Math.round(sell-cost):null;
+    const buyD=r.currency==='EUR'?`€${r.buyPrice}`:`¥${r.buyPrice}`;
+    return`<div class="litem${isSold?' sold':''}">
+      <button class="lidel" onclick="delRec('${r.id}')">×</button>
+      <div class="litop">
+        <div><div class="liname">${r.name||r.sku||'未命名'}</div><div class="liskudate">${r.sku||'—'} · ${r.date||'—'}</div></div>
+        <div style="text-align:right">
+          ${profit!=null?`<div class="liprofit ${profit>=0?'gn':'rd'}">${profit>=0?'+':''}¥${profit}</div>`:`<div class="liprofit t2">持有中</div>`}
+          <span class="listatus ${isSold?'s':'h'}">${isSold?'已售出':'持有中'}</span>
+        </div>
+      </div>
+      <div class="lirow">
+        <div class="licell"><div class="ll2">采购价</div><div class="lval">${buyD} ≈ ¥${Math.round(cost)}</div></div>
+        ${isSold?`<div class="licell"><div class="ll2">实售价</div><div class="lval">¥${r.sellPrice}</div></div>`:''}
+        <div class="licell"><div class="ll2">平台</div><div class="lval">${r.platform||'—'}</div></div>
+        ${r.note?`<div class="licell"><div class="ll2">备注</div><div class="lval">${r.note}</div></div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openSheet(id){
+  editId=id||null;
+  document.getElementById('sh-title').textContent=id?'编辑记录':'新增采购记录';
+  if(id){
+    const rec=getLedger().find(r=>r.id===id)||{};
+    document.getElementById('f-sku').value=rec.sku||'';
+    document.getElementById('f-name').value=rec.name||'';
+    document.getElementById('f-buy').value=rec.buyPrice||'';
+    document.getElementById('f-cur').value=rec.currency||'EUR';
+    document.getElementById('f-sell').value=rec.sellPrice||'';
+    document.getElementById('f-status').value=rec.status||'holding';
+    document.getElementById('f-plat').value=rec.platform||'得物';
+    document.getElementById('f-note').value=rec.note||'';
+  }else{
+    ['f-sku','f-name','f-buy','f-sell','f-note'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('f-cur').value='EUR';
+    document.getElementById('f-status').value='holding';
+    document.getElementById('f-plat').value='得物';
+  }
+  document.getElementById('sov').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeSheet(){document.getElementById('sov').classList.remove('open');document.body.style.overflow='';}
+
+function autoFill(){
+  const sku=document.getElementById('f-sku').value.trim().toUpperCase();
+  if(!sku||document.getElementById('f-name').value.trim()) return;
+  const item=D.find(r=>(r.sku||'').toUpperCase()===sku);
+  if(item) document.getElementById('f-name').value=item.name||'';
+}
+
+function saveRecord(){
+  const buyPrice=document.getElementById('f-buy').value.trim();
+  if(!buyPrice){alert('请填写采购价');return;}
+  const recs=getLedger();
+  const rec={
+    id:editId||Date.now().toString(),
+    date:new Date().toISOString().slice(0,10),
+    sku:document.getElementById('f-sku').value.trim(),
+    name:document.getElementById('f-name').value.trim(),
+    buyPrice,currency:document.getElementById('f-cur').value,
+    sellPrice:document.getElementById('f-sell').value.trim(),
+    status:document.getElementById('f-status').value,
+    platform:document.getElementById('f-plat').value.trim(),
+    note:document.getElementById('f-note').value.trim(),
+  };
+  if(editId){ const i=recs.findIndex(r=>r.id===editId); if(i>=0) recs[i]=rec; }
+  else recs.push(rec);
+  saveLedger(recs); closeSheet(); renderLedger();
+}
+function delRec(id){if(!confirm('确认删除？'))return;saveLedger(getLedger().filter(r=>r.id!==id));renderLedger();}
+
+// ── 自动刷新 ──────────────────────────────────────────────────
+setInterval(()=>load(true), 60000);
+
+// ── 快捷键 ───────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSheet();}});
+
+// ── Service Worker ────────────────────────────────────────────
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+// ── 启动 ──────────────────────────────────────────────────────
+load(false); fetchRate(false);
+</script>
+</body>
+</html>
