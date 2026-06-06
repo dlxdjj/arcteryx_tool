@@ -44,6 +44,8 @@ def main():
                 'image':          prod.get('image', '') or item.get('image', ''),
                 'prices':         prod['prices'],
                 'total_sold':     prod.get('total_sold', 0),
+                'sourceSku':      prod.get('sourceSku', sku),
+                'querySku':       prod.get('querySku', sku),
                 'profit':         profit,
                 'rate':           rate,
                 'buy_display':    f"€{item['eur_price']:.0f}",

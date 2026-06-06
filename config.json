@@ -8,5 +8,15 @@
   "delay_search": 7.0,
   "delay_detail": 5.0,
   "delay_back": 2.0,
-  "delay_between": 1.5
+  "delay_between": 1.5,
+  "arcteryx_markets": [
+    "sale",
+    "outdoor"
+  ],
+  "official_stock_markets": [
+    "sale",
+    "outdoor"
+  ],
+  "official_stock_delay": 0.2,
+  "official_stock_429_delay": 20.0
 }

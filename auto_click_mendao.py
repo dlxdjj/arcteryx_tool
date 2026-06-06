@@ -18,19 +18,188 @@ static function OnBeforeResponse(oSession: Session) {
 """
 
 import pyautogui, pyperclip
-import time, os, sys, glob
+import time, os, sys, glob, json
 from core import (load_config, load_json, save_json,
                   fetch_arcteryx, calc_profit_eur, calc_profit_cny,
                   parse_mendao_spu, read_fiddler)
 
 FIDDLER_FILE   = "fiddler_latest.txt"
+CAPTURE_DIR    = "fiddler_captures"
 DB_FILE        = "mendao_db.json"
 MAP_FILE       = "sku_spu_map.json"
 PRICES_FILE    = "dewu_prices.json"
 RESULTS_FILE   = "results.json"
 POSITIONS_FILE = "dewu_positions.json"
 MISSING_FILE   = "missing_skus.json"
+ALIAS_FILE     = "sku_aliases.json"
 STARTUP_DELAY  = 5
+
+def _unique_existing_paths(paths):
+    seen, result = set(), []
+    for path in paths:
+        if not path:
+            continue
+        full = os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
+        key = os.path.normcase(full)
+        if key not in seen:
+            seen.add(key)
+            result.append(full)
+    return result
+
+def get_capture_dirs():
+    cfg = load_config()
+    paths = [
+        os.environ.get("FIDDLER_CAPTURE_DIR", ""),
+        cfg.get("fiddler_capture_dir", ""),
+        CAPTURE_DIR,
+        r"C:\Users\linxx\Desktop\arcteryx_tool\fiddler_captures",
+    ]
+    return _unique_existing_paths(paths)
+
+def get_fiddler_files():
+    cfg = load_config()
+    paths = [
+        os.environ.get("FIDDLER_FILE", ""),
+        cfg.get("fiddler_file", ""),
+        FIDDLER_FILE,
+        r"C:\Users\linxx\Desktop\arcteryx_tool\fiddler_latest.txt",
+    ]
+    return _unique_existing_paths(paths)
+
+def load_sku_aliases():
+    aliases = load_json(ALIAS_FILE, {})
+    return aliases if isinstance(aliases, dict) else {}
+
+def get_sku_candidates(sku, aliases):
+    values = aliases.get(sku, [])
+    if isinstance(values, str):
+        values = [values]
+    candidates = [sku] + [str(v).strip() for v in values if str(v).strip()]
+    seen, result = set(), []
+    for value in candidates:
+        key = value.upper()
+        if key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+
+def capture_snapshot(kind):
+    snap = {}
+    for folder in get_capture_dirs():
+        pattern = os.path.join(folder, f"*_{kind}.json")
+        for path in glob.glob(pattern):
+            try:
+                snap[os.path.abspath(path)] = os.path.getmtime(path)
+            except OSError:
+                pass
+    return snap
+
+def read_capture(path):
+    try:
+        with open(path, encoding="utf-8-sig", errors="replace") as f:
+            capture = json.load(f)
+        body = capture.get("responseBody", "")
+        if isinstance(body, str):
+            response_json = json.loads(body)
+        else:
+            response_json = body
+        return capture, response_json
+    except Exception:
+        return None, None
+
+def new_capture_files(kind, since_ts, seen):
+    files = []
+    for folder in get_capture_dirs():
+        pattern = os.path.join(folder, f"*_{kind}.json")
+        for path in glob.glob(pattern):
+            full = os.path.abspath(path)
+            try:
+                mtime = os.path.getmtime(full)
+            except OSError:
+                continue
+            if full in seen and mtime <= seen[full]:
+                continue
+            if mtime + 0.001 < since_ts:
+                continue
+            files.append((mtime, full))
+    return [p for _, p in sorted(files)]
+
+def capture_mentions_sku(capture, sku):
+    text = json.dumps({
+        "url": capture.get("url", ""),
+        "requestBody": capture.get("requestBody", ""),
+    }, ensure_ascii=False)
+    return sku.upper() in text.upper()
+
+def extract_search_hit(response_json, sku):
+    if not isinstance(response_json, dict):
+        return None, False
+    if response_json.get("code") != 200 and response_json.get("status") != 200:
+        return None, False
+    data = response_json.get("data") or {}
+    items = data.get("list") or []
+    for item in items:
+        article = str(item.get("articleNo", "")).strip()
+        if article.upper() == sku.upper():
+            return item, True
+    return None, True
+
+def wait_search_hit(sku, seen, since_ts, timeout):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for path in new_capture_files("search", since_ts, seen):
+            try:
+                seen[path] = os.path.getmtime(path)
+            except OSError:
+                seen[path] = time.time()
+            capture, response_json = read_capture(path)
+            if not capture or not capture_mentions_sku(capture, sku):
+                continue
+            hit, valid_response = extract_search_hit(response_json, sku)
+            if hit:
+                return hit
+            if valid_response:
+                return None
+        time.sleep(0.25)
+    return None
+
+def wait_matching_spu(sku, expected_article, seen, since_ts, timeout):
+    expected = (expected_article or sku).upper()
+    deadline = time.time() + timeout
+    rejected = []
+    while time.time() < deadline:
+        for path in new_capture_files("spu-index", since_ts, seen):
+            try:
+                seen[path] = os.path.getmtime(path)
+            except OSError:
+                seen[path] = time.time()
+            _, response_json = read_capture(path)
+            product = parse_mendao_spu(response_json) if response_json else None
+            if not product:
+                continue
+            article = str(product.get("articleNo") or "").upper()
+            if article == expected:
+                return product, rejected
+            rejected.append(article or "UNKNOWN")
+        time.sleep(0.25)
+    return None, rejected
+
+def read_matching_latest_spu(sku, expected_article, since_ts):
+    expected = (expected_article or sku).upper()
+    for path in get_fiddler_files():
+        if not os.path.exists(path):
+            continue
+        try:
+            if os.path.getmtime(path) + 0.001 < since_ts:
+                continue
+            with open(path, encoding="utf-8", errors="replace") as f:
+                response_json = json.load(f)
+        except Exception:
+            continue
+        product = parse_mendao_spu(response_json)
+        if product and str(product.get("articleNo") or "").upper() == expected:
+            return product
+    return None
 
 # ── 读取Excel ─────────────────────────────────────────────────
 def read_excel(filepath):
@@ -207,6 +376,281 @@ def auto_browse(items, positions):
     return db, sku_map
 
 # ── 生成对比结果 ──────────────────────────────────────────────
+# Safe UI + Fiddler mode: waits for matching captures instead of fixed sleeps.
+def auto_browse(items, positions):
+    cfg = load_config()
+    sp  = tuple(positions["search_box"])
+    rp  = tuple(positions["first_result"])
+    bp  = tuple(positions["back_button"])
+
+    db      = load_json(DB_FILE, {})
+    sku_map = load_json(MAP_FILE, {})
+
+    print(f"\n开始自动查询 {len(items)} 个货号")
+    print("鼠标移到屏幕左上角可紧急停止\n")
+
+    for path in get_fiddler_files():
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    success = mapped = 0
+    missing_skus = []
+
+    for i, item in enumerate(items, 1):
+        sku = item['sku']
+        try:
+            print(f"[{i}/{len(items)}] {sku}", end=' ', flush=True)
+            use_capture_wait = any(os.path.isdir(d) for d in get_capture_dirs())
+            search_seen = capture_snapshot("search")
+            detail_seen = capture_snapshot("spu-index")
+
+            pyautogui.click(sp[0], sp[1])
+            time.sleep(0.5)
+            pyperclip.copy(sku)
+            pyautogui.hotkey('ctrl', 'a')
+            time.sleep(0.2)
+            pyautogui.hotkey('ctrl', 'v')
+            time.sleep(0.3)
+            search_start = time.time()
+            pyautogui.press('enter')
+            print("->搜索", end=' ', flush=True)
+
+            search_hit = None
+            if use_capture_wait:
+                search_timeout = cfg.get("search_timeout", cfg.get("delay_search", 7.0) + 5)
+                search_hit = wait_search_hit(sku, search_seen, search_start, search_timeout)
+                if not search_hit:
+                    missing_skus.append(sku)
+                    success += 1
+                    print("->搜索无精确匹配，跳过")
+                    continue
+                print("->命中", end=' ', flush=True)
+            else:
+                time.sleep(cfg["delay_search"])
+            check_captcha()
+
+            expected_article = str((search_hit or {}).get("articleNo") or sku)
+            expected_spu = str((search_hit or {}).get("spuId") or "")
+
+            pyautogui.click(rp[0], rp[1])
+            detail_start = time.time()
+            print("->详情", end=' ', flush=True)
+
+            product = None
+            rejected_articles = []
+            if use_capture_wait:
+                detail_timeout = cfg.get("detail_timeout", cfg.get("delay_detail", 5.0) + 8)
+                product, rejected_articles = wait_matching_spu(
+                    sku, expected_article, detail_seen, detail_start, detail_timeout
+                )
+                if not product:
+                    product = read_matching_latest_spu(sku, expected_article, detail_start)
+            else:
+                time.sleep(cfg["delay_detail"])
+                j = read_fiddler(FIDDLER_FILE)
+                product = parse_mendao_spu(j) if j else None
+                if product and str(product.get("articleNo") or "").upper() != expected_article.upper():
+                    rejected_articles = [str(product.get("articleNo") or "UNKNOWN")]
+                    product = None
+            check_captcha()
+
+            got_result = False
+            if product:
+                if expected_spu and not product.get("spuId"):
+                    product["spuId"] = expected_spu
+                article          = product.get('articleNo') or expected_article
+                sku_map[sku]     = article
+                sku_map[article] = article
+                db[article]      = product
+                save_json(DB_FILE, db)
+                save_json(MAP_FILE, sku_map)
+                save_json(PRICES_FILE, list(db.values()))
+                mapped += 1
+                got_result = True
+                in_stock_cnt = len([p for p in product['prices'] if p['inStock']])
+                print(f"->保存 {article} ¥{product['minPrice']:.0f} ({in_stock_cnt}个尺码有货)")
+            else:
+                missing_skus.append(sku)
+                if rejected_articles:
+                    print(f"->响应不匹配({','.join(rejected_articles[-3:])})，跳过")
+                else:
+                    print("->未等到匹配详情，跳过")
+
+            if got_result:
+                pyautogui.click(bp[0], bp[1])
+                time.sleep(cfg["delay_back"])
+
+            success += 1
+            time.sleep(cfg["delay_between"])
+
+        except pyautogui.FailSafeException:
+            print("\n紧急停止")
+            break
+        except Exception as e:
+            print(f"错误: {e}")
+            time.sleep(1)
+
+    print(f"\n{'='*50}")
+    print(f"完成：处理 {success} 个，成功映射 {mapped} 个，未命中/跳过 {len(missing_skus)} 个")
+
+    if missing_skus:
+        existing = load_json(MISSING_FILE, [])
+        save_json(MISSING_FILE, list(set(existing + missing_skus)))
+        print(f"未命中货号已保存到 missing_skus.json ({len(missing_skus)} 个)")
+        print("可运行 python manual_add.py 手动补录")
+
+    return db, sku_map
+
+# Final safe mode with manual SKU aliases. This definition intentionally
+# overrides the earlier auto_browse definitions above.
+def auto_browse(items, positions):
+    cfg = load_config()
+    sp  = tuple(positions["search_box"])
+    rp  = tuple(positions["first_result"])
+    bp  = tuple(positions["back_button"])
+
+    db      = load_json(DB_FILE, {})
+    sku_map = load_json(MAP_FILE, {})
+    aliases = load_sku_aliases()
+
+    print(f"\n开始自动查询 {len(items)} 个货号")
+    print("鼠标移到屏幕左上角可紧急停止\n")
+
+    for path in get_fiddler_files():
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    success = mapped = 0
+    missing_skus = []
+
+    for i, item in enumerate(items, 1):
+        sku = item["sku"]
+        try:
+            candidates = get_sku_candidates(sku, aliases)
+            print(f"[{i}/{len(items)}] {sku}", end=" ", flush=True)
+
+            use_capture_wait = any(os.path.isdir(d) for d in get_capture_dirs())
+            product = None
+            search_hit = None
+            query_sku = sku
+            expected_article = sku
+            expected_spu = ""
+            rejected_articles = []
+
+            for query_sku in candidates:
+                if len(candidates) > 1:
+                    print(f"->尝试{query_sku}", end=" ", flush=True)
+
+                search_seen = capture_snapshot("search")
+                detail_seen = capture_snapshot("spu-index")
+
+                pyautogui.click(sp[0], sp[1])
+                time.sleep(0.5)
+                pyperclip.copy(query_sku)
+                pyautogui.hotkey("ctrl", "a")
+                time.sleep(0.2)
+                pyautogui.hotkey("ctrl", "v")
+                time.sleep(0.3)
+                search_start = time.time()
+                pyautogui.press("enter")
+                print("->搜索", end=" ", flush=True)
+
+                if use_capture_wait:
+                    search_timeout = cfg.get("search_timeout", cfg.get("delay_search", 7.0) + 5)
+                    search_hit = wait_search_hit(query_sku, search_seen, search_start, search_timeout)
+                    if not search_hit:
+                        print("->无匹配", end=" ", flush=True)
+                        continue
+                    print("->命中", end=" ", flush=True)
+                else:
+                    time.sleep(cfg["delay_search"])
+                    search_hit = None
+
+                check_captcha()
+                expected_article = str((search_hit or {}).get("articleNo") or query_sku)
+                expected_spu = str((search_hit or {}).get("spuId") or "")
+
+                pyautogui.click(rp[0], rp[1])
+                detail_start = time.time()
+                print("->详情", end=" ", flush=True)
+
+                if use_capture_wait:
+                    detail_timeout = cfg.get("detail_timeout", cfg.get("delay_detail", 5.0) + 8)
+                    product, rejected_articles = wait_matching_spu(
+                        query_sku, expected_article, detail_seen, detail_start, detail_timeout
+                    )
+                    if not product:
+                        product = read_matching_latest_spu(query_sku, expected_article, detail_start)
+                else:
+                    time.sleep(cfg["delay_detail"])
+                    j = read_fiddler(FIDDLER_FILE)
+                    product = parse_mendao_spu(j) if j else None
+                    if product and str(product.get("articleNo") or "").upper() != expected_article.upper():
+                        rejected_articles = [str(product.get("articleNo") or "UNKNOWN")]
+                        product = None
+
+                check_captcha()
+                if product:
+                    break
+
+            got_result = False
+            if product:
+                if expected_spu and not product.get("spuId"):
+                    product["spuId"] = expected_spu
+                product["sourceSku"] = sku
+                product["querySku"] = query_sku
+                article = product.get("articleNo") or expected_article
+                sku_map[sku] = article
+                sku_map[article] = article
+                if query_sku != sku:
+                    sku_map[query_sku] = article
+                db[article] = product
+                save_json(DB_FILE, db)
+                save_json(MAP_FILE, sku_map)
+                save_json(PRICES_FILE, list(db.values()))
+                mapped += 1
+                got_result = True
+                in_stock_cnt = len([p for p in product["prices"] if p["inStock"]])
+                alias_note = f" via {query_sku}" if query_sku != sku else ""
+                print(f"->保存 {article}{alias_note} ¥{product['minPrice']:.0f} ({in_stock_cnt}个尺码有货)")
+            else:
+                missing_skus.append(sku)
+                if rejected_articles:
+                    print(f"->响应不匹配({','.join(rejected_articles[-3:])})，跳过")
+                else:
+                    print("->所有候选都无匹配，跳过")
+
+            if got_result:
+                pyautogui.click(bp[0], bp[1])
+                time.sleep(cfg["delay_back"])
+
+            success += 1
+            time.sleep(cfg["delay_between"])
+
+        except pyautogui.FailSafeException:
+            print("\n紧急停止")
+            break
+        except Exception as e:
+            print(f"错误: {e}")
+            time.sleep(1)
+
+    print(f"\n{'='*50}")
+    print(f"完成：处理 {success} 个，成功映射 {mapped} 个，未命中/跳过 {len(missing_skus)} 个")
+
+    if missing_skus:
+        existing = load_json(MISSING_FILE, [])
+        save_json(MISSING_FILE, list(set(existing + missing_skus)))
+        print(f"未命中货号已保存到 missing_skus.json ({len(missing_skus)} 个)")
+        print("可运行 python manual_add.py 手动补录")
+
+    return db, sku_map
+
 def generate_results(items):
     db      = load_json(DB_FILE, {})
     sku_map = load_json(MAP_FILE, {})
@@ -238,6 +682,9 @@ def generate_results(items):
                 "dewu_min_price": dw,
                 "image":          prod.get('image', '') or item.get('image', ''),
                 "prices":         prod['prices'],
+                "total_sold":     prod.get('total_sold', 0),
+                "sourceSku":      prod.get('sourceSku', sku),
+                "querySku":       prod.get('querySku', sku),
                 "profit":         profit,
                 "rate":           rate,
                 "buy_display":    buy_display,
@@ -305,8 +752,15 @@ def main():
         return
 
     sku_map   = load_json(MAP_FILE, {})
-    new_items = [i for i in items if i['sku'] not in sku_map]
     cached    = [i for i in items if i['sku'] in sku_map]
+    seen_query_skus = set()
+    new_items = []
+    for item in items:
+        sku = item.get('sku')
+        if not sku or sku in sku_map or sku in seen_query_skus:
+            continue
+        seen_query_skus.add(sku)
+        new_items.append(item)
     print(f"\n已缓存: {len(cached)} 件  需查询: {len(new_items)} 件")
 
     print()

@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 fiddler_latest.txt
+fiddler_captures/
+backup_reset_*/
+dewu_prices.json
+match_audit_report.json

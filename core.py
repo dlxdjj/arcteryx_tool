@@ -39,6 +39,33 @@ def calc_profit_cny(buy_cny, dewu_price):
     return round(profit), round(profit / buy_cny * 100, 1) if buy_cny else 0
 
 _API = "https://jh5e3sxgk0.execute-api.us-west-2.amazonaws.com/product-feed/products"
+_OFFICIAL_MARKETS = [
+    {
+        "market": "sale",
+        "name": "Outlet",
+        "base_url": "https://outlet.arcteryx.com/",
+        "queries": [
+            ("men",   "mensjacketscoats"),
+            ("men",   "mensmidlayersfleece"),
+            ("men",   "mensshirtstops"),
+            ("men",   "mensbaselay"),
+            ("men",   "menslegwear"),
+            ("men",   "menssoftshells"),
+            ("women", "womensjacketscoats"),
+            ("women", "womensmidlayersfleece"),
+            ("women", "womensshirtstops"),
+        ],
+    },
+    {
+        "market": "outdoor",
+        "name": "Official",
+        "base_url": "https://arcteryx.com/",
+        "queries": [
+            ("men", ""),
+            ("women", ""),
+        ],
+    },
+]
 _CATS = [
     ("men",   "mensjacketscoats"),
     ("men",   "mensmidlayersfleece"),
@@ -51,38 +78,70 @@ _CATS = [
     ("women", "womensshirtstops"),
 ]
 
-def fetch_arcteryx():
-    H = {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US"}
-    items, seen = [], set()
-    print("抓取始祖鸟奥特莱斯...")
-    for gender, cat in _CATS:
+def _pick_eur_price(p):
+    return p.get("discountPrice") or p.get("minDiscountPrice") or p.get("price") or p.get("minPrice") or 0
+
+def _normalize_product(p, gender, cat, market_cfg):
+    sku = p.get("sku", "")
+    price = _pick_eur_price(p)
+    if not sku or not price:
+        return None
+    rel_url = p.get("url", "")
+    return {
+        "sku":          sku,
+        "name":         p.get("name", ""),
+        "eur_price":    float(price),
+        "discount_pct": p.get("savingsPercentage", 0) or 0,
+        "gender":       p.get("gender") or gender,
+        "category":     cat or p.get("category") or p.get("collection") or market_cfg["market"],
+        "url":          market_cfg["base_url"] + rel_url.lstrip("/"),
+        "image":        (p.get("mainImage") or {}).get("url", ""),
+        "price_type":   "eur",
+        "source":       market_cfg["name"],
+        "source_market": market_cfg["market"],
+    }
+
+def _fetch_arcteryx_market(market_cfg, headers):
+    rows = []
+    for gender, cat in market_cfg["queries"]:
         try:
             r = requests.get(_API, params={
-                "market": "sale", "language": "en", "country": "it",
+                "market": market_cfg["market"], "language": "en", "country": "it",
                 "gender": gender, "category": cat, "subCategory": "", "env": "prod",
-            }, headers=H, timeout=12, verify=False)
-            for p in (r.json() if isinstance(r.json(), list) else []):
-                sku = p.get("sku", "")
-                if not sku or sku in seen:
-                    continue
-                sale = p.get("discountPrice") or p.get("minDiscountPrice", 0)
-                if not sale:
-                    continue
-                seen.add(sku)
-                items.append({
-                    "sku":          sku,
-                    "name":         p.get("name", ""),
-                    "eur_price":    float(sale),
-                    "discount_pct": p.get("savingsPercentage", 0),
-                    "gender":       gender,
-                    "category":     cat,
-                    "url":          "https://outlet.arcteryx.com/" + p.get("url", ""),
-                    "image":        (p.get("mainImage") or {}).get("url", ""),
-                    "price_type":   "eur",
-                })
+            }, headers=headers, timeout=20, verify=False)
+            data = r.json()
+            if not isinstance(data, list):
+                raise ValueError(data)
+            for p in data:
+                item = _normalize_product(p, gender, cat, market_cfg)
+                if item:
+                    rows.append(item)
             time.sleep(0.2)
         except Exception as e:
-            print(f"  {cat}: {e}")
+            label = f"{market_cfg['market']} {gender} {cat}".strip()
+            print(f"  {label}: {e}")
+    return rows
+
+def fetch_arcteryx():
+    H = {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US"}
+    items, by_item = [], {}
+    enabled = set(load_config().get("arcteryx_markets", ["sale", "outdoor"]))
+    print("抓取始祖鸟 Outlet + 官网...")
+    for market_cfg in _OFFICIAL_MARKETS:
+        if market_cfg["market"] not in enabled:
+            continue
+        rows = _fetch_arcteryx_market(market_cfg, H)
+        added = 0
+        for item in rows:
+            key = (item.get("source_market"), item.get("sku"), item.get("url"))
+            old = by_item.get(key)
+            # 只合并完全相同来源/货号/商品页的重复 feed 行。
+            if old and old.get("eur_price", 0) <= item.get("eur_price", 0):
+                continue
+            by_item[key] = item
+            added += 1
+        print(f"  {market_cfg['name']}: {len(rows)} 条，新增/更新 {added} 条")
+    items = list(by_item.values())
     print(f"找到 {len(items)} 件")
     return items
 
